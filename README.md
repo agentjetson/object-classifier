@@ -1,6 +1,17 @@
-# Improved Multi-Object Tracker for agentjetson/object-classifier
+# Multi-Object Tracker for agentjetson/object-classifier
 
-Drop-in replacement for the existing lightweight IoU tracker.
+```bash
+# from object-classifier/
+docker build -f docker/Dockerfile -t object-classifier .
+
+# against a running core compose (same Docker network or host)
+docker run --rm --network host \
+  -e INGEST_ADDR=localhost:50052 \
+  -e ORT_DEVICE=cpu \
+  -v $(pwd)/models:/app/models:ro \
+  -v /path/to/sample.mp4:/app/sample.mp4:ro \
+  object-classifier
+```
 
 ## What changed
 

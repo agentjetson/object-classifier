@@ -1,4 +1,10 @@
 build/
 .git/
-*.zip
-**/.DS_Store
+*.onnx
+models/*.onnx
+*.mp4
+*.avi
+.vscode/
+.idea/
+CMakeCache.txt
+CMakeFiles/
