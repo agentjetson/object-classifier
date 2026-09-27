@@ -191,7 +191,7 @@ std::vector<std::vector<float>> Tracker::build_cost(
 // Main update – ByteTrack-style two-stage + Kalman prediction
 // ============================================================================
 
-std::vector<Detection> Tracker::update(std::vector<Detection> dets) {
+std::vector<Detection> Tracker::update(std::vector<Detection> dets, const cv::Mat& frame) {
     // ------------------------------------------------------------------
     // 0. Predict all existing tracks
     // ------------------------------------------------------------------

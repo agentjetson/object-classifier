@@ -3,6 +3,7 @@
 #include "types.hpp"
 #include "geo.hpp"
 
+#include <opencv2/core.hpp>
 #include <opencv2/video/tracking.hpp>
 #include <vector>
 #include <algorithm>
@@ -56,7 +57,7 @@ public:
      * re-used across frames. Tentative tracks get a temporary id
      * that becomes permanent once confirmed.
      */
-    std::vector<Detection> update(std::vector<Detection> dets);
+    std::vector<Detection> update(std::vector<Detection> dets, const cv::Mat& frame);
 
     int num_tracks() const { return static_cast<int>(tracks_.size()); }
     int num_confirmed() const;
