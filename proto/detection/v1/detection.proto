@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package detection.v1;
+
+option cc_enable_arenas = true;
+
+import "google/protobuf/timestamp.proto";
+
+// Axis-aligned bounding box in original image coordinates
+message BoundingBox {
+  float x1 = 1;
+  float y1 = 2;
+  float x2 = 3;
+  float y2 = 4;
+}
+
+message Detection {
+  int32  class_id      = 1;
+  string class_name    = 2;
+  float  confidence    = 3;
+  BoundingBox box      = 4;
+  int32  track_id      = 5;
+  string ocr_text      = 6;
+  float ocr_confidence = 7;
+}
+
+// One pipeline alert (frame + detections + latency)
+// Produced by the aggregator after correlating objects + capability results.
+message Alert {
+  int64  frame_id           = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  repeated Detection detections = 3;
+  bool   watchlist_hit      = 4;
+  string matched_label      = 5;   // eg person
+  double e2e_latency_ms     = 6;
+  string source             = 7;   // cam index / video path
+  map<string, string> labels = 8;  // site, camera_id, etc.
+}
+
+// Object-centric envelope published by the recorder for each tracked object.
+// Subject: cv.object.<class_name>  (e.g. cv.object.car, cv.object.person)
+message ObjectEnvelope {
+  int64  frame_id           = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string source             = 3;
+  string class_name         = 4;
+  int32  class_id           = 5;
+  float  confidence         = 6;
+  BoundingBox box           = 7;
+  int32  track_id           = 8;
+  bytes  crop_jpeg          = 9;   // optional JPEG crop of the object
+  map<string, string> labels = 10;
+  int32  frame_width        = 11;
+  int32  frame_height       = 12;
+  double capture_latency_ms = 13;  // capture → publish
+}
+
+// Result from a specialist microservice (ALPR, vehicle attributes, ...).
+// Subject: cv.result.<capability>  (e.g. cv.result.alpr)
+message CapabilityResult {
+  int64  frame_id           = 1;
+  google.protobuf.Timestamp timestamp = 2;
+  string source             = 3;
+  string capability         = 4;   // "alpr", "vehicle_attr", "face", ...
+  int32  track_id           = 5;
+  string class_name         = 6;   // parent object class
+  BoundingBox box           = 7;   // parent object box (or refined)
+  // ALPR-specific (also usable generically via attributes)
+  string ocr_text           = 8;
+  float  ocr_confidence     = 9;
+  BoundingBox plate_box     = 10;
+  map<string, string> attributes = 11;
+  double processing_ms      = 12;
+  map<string, string> labels = 13;
+}

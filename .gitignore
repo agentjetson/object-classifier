@@ -1,0 +1,13 @@
+build/
+cmake-build-*/
+.vscode/
+.idea/
+*.mp4
+*.mov
+*.avi
+runs/
+models/*.onnx
+models/*.pt
+models/*.task
+!models/.gitkeep
+.DS_Store

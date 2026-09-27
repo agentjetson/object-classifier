@@ -1,0 +1,28 @@
+# Local edge stack for object-classifier.
+# Talks to agentjetson/core ingest (gRPC :50052) when that stack is up.
+#
+# Usage:
+#   docker compose up --build
+#   # or against host models:
+#   MODEL_PATH=./models/rfdetr.onnx SOURCE=./data/sample.mp4 docker compose up
+
+services:
+  object-classifier:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    environment:
+      INGEST_ADDR: ${INGEST_ADDR:-host.docker.internal:50052}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_INSECURE: "true"
+    volumes:
+      - ${MODEL_DIR:-./models}:/models:ro
+      - ${DATA_DIR:-./data}:/data:ro
+    # Example: in-process capture + classify
+    command:
+      - "--in-process"
+      - "${SOURCE:-/data/sample.mp4}"
+      - "${MODEL:-/models/model.onnx}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
