@@ -1,18 +1,18 @@
 # syntax=docker/dockerfile:1.7
 # object-classifier — primary RF-DETR detect + track → ObjectEnvelope → core ingest
-# Aligned with agentjetson/core (Ubuntu 25.04 / OpenCV 4.10)
+# Base: agentjetsonai/cv-base (Ubuntu 26.04 + OpenCV 5.0.0 + ORT 1.30.0 + rf-detr @ /opt/*)
 
-FROM ubuntu:25.04 AS builder
+FROM agentjetsonai/cv-base AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive \
     GIT_TERMINAL_PROMPT=0
 
+# OpenCV / ORT / rf-detr come from the base — do not install distro opencv or download ORT
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential cmake git pkg-config curl ca-certificates \
         libabsl-dev \
         libprotobuf-dev protobuf-compiler \
         libgrpc++-dev protobuf-compiler-grpc \
-        libopencv-dev \
         libeigen3-dev \
         libyaml-cpp-dev \
         libspdlog-dev \
@@ -20,47 +20,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# ONNX Runtime (CPU). For GPU images swap the URL / add CUDA base later.
-ARG ORT_VERSION=1.19.2
-RUN mkdir -p /opt/onnxruntime && \
-    curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
-    | tar -xz -C /opt/onnxruntime --strip-components=1
-
 WORKDIR /src
 COPY . .
 
-ENV ONNXRUNTIME_ROOT=/opt/onnxruntime \
-    ONNXRUNTIME_ROOT_DIR=/opt/onnxruntime
-
-# CMake will FetchContent rf-detr / motcpp / nats / spdlog as needed
+# Base already exports:
+#   OpenCV_DIR, ONNXRUNTIME_ROOT, ONNXRUNTIME_ROOT_DIR, rfdetr_onnx_DIR
 RUN rm -rf build CMakeCache.txt CMakeFiles \
     && git config --global http.version HTTP/1.1 \
     && cmake -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build -j$(nproc) --target object_classifier
 
 # ── runtime ──────────────────────────────────────────────
-FROM ubuntu:25.04
+FROM agentjetsonai/cv-base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Same OpenCV 4.10 ABI as core (plucky packages use the "410" suffix)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libprotobuf32t64 libgrpc++1.51t64 libssl3 ca-certificates \
-        libabsl20230802 \
-        libopencv-core410 \
-        libopencv-imgproc410 \
-        libopencv-imgcodecs410 \
-        libopencv-videoio410 \
-        libopencv-calib3d410 \
-        libopencv-features2d410 \
+        libprotobuf32t64 \
+        libgrpc++1.51t64 \
+        libssl3t64 \
+        ca-certificates \
+        libabsl20260107 \
         libyaml-cpp0.8 \
-        libspdlog1.12 \
+        libspdlog1.15 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /opt/onnxruntime /opt/onnxruntime
 COPY --from=builder /src/build/object_classifier /app/object_classifier
 
-ENV LD_LIBRARY_PATH=/opt/onnxruntime/lib \
+ENV LD_LIBRARY_PATH=/opt/opencv/lib:/opt/onnxruntime/lib \
     INGEST_ADDR=ingest:50052 \
     ORT_DEVICE=cpu \
     EDGE_FORCE_CPU=1 \
