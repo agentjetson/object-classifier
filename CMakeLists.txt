@@ -173,6 +173,7 @@ set(PROTO_FILES
   ${PROTO_ROOT}/detection/v1/annotated_video.proto
   ${PROTO_ROOT}/ingest/v1/ingest_service.proto
   ${PROTO_ROOT}/capture/v1/frame.proto
+  ${PROTO_ROOT}/capture/v1/frame_service.proto
 )
 
 set(PROTO_SRCS)
