@@ -281,9 +281,14 @@ int main(int argc, char** argv) {
     spdlog::info("object-classifier [in-process] source={} model={} ingest={}",
                  arg2, model, ingest_addr);
 
-    while (g_running && capture.is_running()) {
+    // Drain until capture has stopped *and* the queue is empty.
+    // start() sets running_ early so we do not race-exit before the first frame.
+    while (g_running) {
       auto item = queue->pop(std::chrono::milliseconds(500));
-      if (!item) continue;
+      if (!item) {
+        if (!capture.is_running()) break;
+        continue;
+      }
 
       auto& [frame, cam_meta] = *item;
 

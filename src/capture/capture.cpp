@@ -49,8 +49,11 @@ Capture::Capture(Config cfg, std::shared_ptr<FrameQueue> queue)
 Capture::~Capture() { stop(); }
 
 void Capture::start() {
-  if (running_) return;
+  if (running_.load()) return;
   stop_requested_ = false;
+  // Set running before the worker starts so consumers do not observe a false
+  // "not running" window and exit immediately (race with is_running()).
+  running_ = true;
   thread_ = std::thread(&Capture::capture_loop, this);
 }
 
@@ -63,13 +66,15 @@ void Capture::stop() {
 
 void Capture::capture_loop() {
   // Open source
-  if (cfg_.source.size() == 1 && std::isdigit(cfg_.source[0])) {
+  if (cfg_.source.size() == 1 &&
+      std::isdigit(static_cast<unsigned char>(cfg_.source[0]))) {
     cap_.open(std::stoi(cfg_.source), cv::CAP_V4L2);
   } else {
     cap_.open(cfg_.source);
   }
   if (!cap_.isOpened()) {
     spdlog::error("camera-connector: failed to open source '{}'", cfg_.source);
+    running_ = false;
     return;
   }
 
@@ -83,19 +88,24 @@ void Capture::capture_loop() {
   height_ = static_cast<int>(cap_.get(cv::CAP_PROP_FRAME_HEIGHT));
   spdlog::info("camera-connector: opened '{}' ({}x{})", cfg_.source, width_, height_);
 
-  running_ = true;
   cv::Mat frame;
+  int consecutive_fail = 0;
   while (!stop_requested_) {
     if (!cap_.read(frame) || frame.empty()) {
-      if (cfg_.loop_file && !cfg_.source.empty() &&
+      ++consecutive_fail;
+      const bool is_file =
+          !cfg_.source.empty() &&
           cfg_.source.find("rtsp") == std::string::npos &&
-          cfg_.source.find("/dev/") == std::string::npos) {
+          cfg_.source.find("/dev/") == std::string::npos;
+      if (cfg_.loop_file && is_file && consecutive_fail < 3) {
+        spdlog::info("camera-connector: looping file '{}'", cfg_.source);
         cap_.set(cv::CAP_PROP_POS_FRAMES, 0);
         continue;
       }
       spdlog::warn("camera-connector: end of stream or read failure");
       break;
     }
+    consecutive_fail = 0;
 
     FrameMeta meta;
     meta.frame_id   = ++frame_counter_;
@@ -107,7 +117,7 @@ void Capture::capture_loop() {
     queue_->push(frame.clone(), std::move(meta));
   }
   running_ = false;
-  spdlog::info("camera-connector: capture loop exited");
+  spdlog::info("camera-connector: capture loop exited (frames={})", frame_counter_);
 }
 
 }  // namespace camera

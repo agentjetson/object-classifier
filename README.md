@@ -1,90 +1,261 @@
-# Multi-Object Tracker for agentjetson/object-classifier
+# object-classifier
+
+**Primary detect + track → `ObjectEnvelope` for AgentJetson.**
+
+Edge CV consumer that runs [agentjetson/rf-detr](https://github.com/agentjetson/rf-detr) (RF-DETR via ONNX Runtime — TensorRT → CUDA → CPU), tracks objects with a Kalman + ByteTrack-lite tracker, and publishes stable `detection.v1.ObjectEnvelope` messages to [agentjetson/core](https://github.com/agentjetson/core) ingest (`IngestObject` / `cv.object.*`).
+
+This README is the local trail marker. The architecture map lives in the [System Overview & Run Guide](https://github.com/agentjetson) (bring-up order §6).
+
+---
+
+## Role in the stack
+
+```text
+Cameras / files / RTSP
+        │
+        ▼
+camera-connector (or --in-process capture)
+        │  FrameQueue / FrameEnvelope
+        ▼
+object-classifier  ◄── agentjetson/rf-detr (ONNX)
+        │  ObjectEnvelope  (cv.object.<class>)
+        ▼
+core ingest → NATS JetStream → aggregator / alpr-consumer / …
+```
+
+- **ObjectEnvelope remains the cornerstone for detection.** Upstream capture and scene routing can change; downstream specialists must not care how the envelope was produced.
+- Scene gating (SigLIP / DINOv3 / MoViNet) is owned by [scene-router](https://github.com/agentjetson/scene-router) / [temporal-classifier](https://github.com/agentjetson/temporal-classifier). This repo stays a pure detect+track consumer.
+
+---
+
+## Prerequisites
+
+| Dependency | Notes |
+|------------|--------|
+| CMake ≥ 3.20, C++20 | |
+| OpenCV ≥ 4.5 | 4.x or 5.x |
+| ONNX Runtime | set `ONNXRUNTIME_ROOT` (or `ONNXRUNTIME_ROOT_DIR`) |
+| protobuf + gRPC | for ingest / FrameService protos |
+| spdlog, Threads | fetched / system |
 
 ```bash
-# from object-classifier/
+export ONNXRUNTIME_ROOT=/path/to/onnxruntime   # or ONNXRUNTIME_ROOT_DIR
+```
+
+CMake will `find_package(rfdetr_onnx)` and, if missing, fetch [agentjetson/rf-detr](https://github.com/agentjetson/rf-detr) via FetchContent.
+
+---
+
+## Models
+
+Primary weights: **`models/rf-detr-nano.onnx`** (COCO-80). Larger variants are optional.
+
+### Download script
+
+```bash
+# Nano only (recommended for first demo)
+./scripts/download_models.sh
+
+# Other variants
+./scripts/download_models.sh --variant small
+./scripts/download_models.sh --variant base
+./scripts/download_models.sh --all
+
+# Custom output directory
+MODEL_DIR=/opt/models ./scripts/download_models.sh
+```
+
+Source: pre-converted ONNX from [PierreMarieCurie/rf-detr-onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx) (RF-DETR 1.4.1 / Roboflow COCO). License: Apache-2.0 for nano/small/base/medium.
+
+| Variant | Local path after download | Typical use |
+|---------|---------------------------|-------------|
+| nano (default) | `models/rf-detr-nano.onnx` | Edge / Jetson first demo |
+| small | `models/rf-detr-small.onnx` | Higher accuracy |
+| base | `models/rf-detr-base.onnx` | Server / high-end GPU |
+
+Optional: set `LABELS_PATH` to a one-class-per-line file to override the built-in COCO-80 names.
+
+---
+
+## Build
+
+```bash
+git clone https://github.com/agentjetson/object-classifier.git
+cd object-classifier
+./scripts/download_models.sh
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(nproc)"
+```
+
+Binary: `build/object_classifier`.
+
+---
+
+## Run (aligned with System Overview §6)
+
+### Recommended single-box path (capture + classify in one process)
+
+Vendors the camera-connector `FrameQueue` path — no separate camera-connector process required.
+
+```bash
+# Video file
+INGEST_ADDR=<ingest-host>:50052 \
+ORT_DEVICE=gpu \
+./build/object_classifier --in-process video.mp4 models/rf-detr-nano.onnx
+
+# Webcam
+INGEST_ADDR=<ingest-host>:50052 \
+./build/object_classifier --in-process 0 models/rf-detr-nano.onnx
+
+# RTSP
+INGEST_ADDR=<ingest-host>:50052 \
+./build/object_classifier --in-process rtsp://user:pass@cam/stream models/rf-detr-nano.onnx
+```
+
+### Standalone source mode
+
+Opens `cv::VideoCapture` inside the classifier (no shared queue).
+
+```bash
+INGEST_ADDR=<ingest-host>:50052 \
+./build/object_classifier --source video.mp4 models/rf-detr-nano.onnx
+```
+
+### Network path (gRPC FrameService)
+
+Subscribe to a remote [camera-connector](https://github.com/agentjetson/camera-connector) `FrameService` stream.
+
+```bash
+INGEST_ADDR=<ingest-host>:50052 \
+FRAME_GRPC_ADDR=<camera-host>:50060 \
+./build/object_classifier --network-path localhost:50060 models/rf-detr-nano.onnx
+```
+
+### Environment
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `INGEST_ADDR` | `localhost:50052` | core ingest gRPC |
+| `ORT_DEVICE` | `gpu` | `gpu` or `cpu` (rf-detr provider selection) |
+| `EDGE_FORCE_CPU` | `0` | if `1`, force CPU regardless of `ORT_DEVICE` |
+| `DET_CONF` | `0.35` | detector confidence threshold |
+| `LABELS_PATH` | (empty) | override COCO class names |
+| `FRAME_GRPC_ADDR` | `localhost:50060` | FrameService address (`--network-path`) |
+| `FRAME_CAMERA_ID` | (empty) | optional Subscribe filter |
+| `FRAME_ENCODING` | `jpeg` | preferred encoding (`jpeg` / `raw_bgr`) |
+
+Default emit classes: `person`, `car`, `truck`, `bus`, `motorcycle` (see `ConsumerPipeline::Config`).
+
+---
+
+## Docker
+
+```bash
+./scripts/download_models.sh
+# place a sample under data/sample.mp4 if desired
+
 docker build -f docker/Dockerfile -t object-classifier .
 
-# against a running core compose (same Docker network or host)
 docker run --rm --network host \
   -e INGEST_ADDR=localhost:50052 \
   -e ORT_DEVICE=cpu \
-  -v $(pwd)/models:/app/models:ro \
-  -v /path/to/sample.mp4:/app/sample.mp4:ro \
+  -v "$(pwd)/models:/app/models:ro" \
+  -v /path/to/sample.mp4:/app/data/sample.mp4:ro \
   object-classifier
 ```
 
-## What changed
+Or compose (against core on the host):
 
-| Feature | Old tracker | New tracker |
-|---------|-------------|-------------|
-| Motion model | None (last box only) | Constant-velocity Kalman filter on `(cx, cy, aspect, height)` |
-| Association | Greedy IoU, single pass | ByteTrack-style **two-stage** (high-conf → low-conf recovery) |
-| Cost metric | Raw IoU | `1 − IoU` with class gate (never cross classes) |
-| Track lifecycle | Simple age / hits | Tentative → Confirmed → Lost (same semantics as DeepSORT / SORT) |
-| Prediction through occlusion | No | Yes – Kalman predicts the box so IDs survive short misses |
-| Dependencies | None | OpenCV only (already required by the project) |
-| Public API | `update(vector<Detection>)` | **Identical** – zero changes needed in `ConsumerPipeline` |
-
-## Solid ideas taken from the reference trackers
-
-**Smorodov/Multitarget-tracker**
-- Kalman filter for trajectory smoothing & prediction of missed detections
-- IoU (Jaccard) distance as the primary association metric
-- Explicit track age / hits / confirmed state
-
-**shaoshengsong/DeepSORT**
-- ByteTrack two-stage association (high-score first, then low-score recovery of lost tracks)
-- Constant-velocity Kalman state `[cx, cy, a, h, vx, vy, va, vh]`
-- Track states: Tentative / Confirmed / Lost
-- Class-aware matching (association never crosses object classes)
-- Cascade-style preference for recently updated tracks
-
-Appearance ReID is intentionally omitted so the component stays lightweight on Jetson (no second ONNX model, no extra GPU memory). It can be added later behind a feature flag if needed.
-
-## Integration
-
-1. Replace the two files in the object-classifier tree:
-
-```
-src/cv/include/tracker.hpp   ←  this include/tracker.hpp
-src/cv/src/tracker.cpp       ←  this src/tracker.cpp
+```bash
+docker compose up --build
 ```
 
-2. `geo.hpp` and `types.hpp` stay unchanged.
+---
 
-3. `ConsumerPipeline` already does:
+## First-demo path (detection-only)
 
-```cpp
-tracker_ = std::make_unique<Tracker>();
-...
-tracker_->update(dets);   // now uses Kalman + ByteTrack logic
+From the System Overview **path A**:
+
+```text
+1. core
+   docker compose up -d nats nats-publisher ingest aggregator consumer
+
+2. alpr-consumer (optional specialist)
+   NATS_URL=nats://localhost:4222 ORT_DEVICE=gpu ./build/alpr_consumer
+
+3. object-classifier (this repo)
+   INGEST_ADDR=localhost:50052 ORT_DEVICE=gpu \
+   ./build/object_classifier --in-process sample.mp4 models/rf-detr-nano.onnx
+
+4. Watch
+   - NATS subjects cv.object.>
+   - alpr publishes cv.result.alpr (when gated / vehicle classes)
+   - aggregator emits cv.alert
+   - consumer logs alerts
 ```
 
-No other source changes are required.
+camera-connector and crop-preparator are **not** required when using `--in-process`.
 
-4. Optional tuning via `Tracker::Config` (pass to the constructor):
+---
 
-```cpp
-Tracker::Config cfg;
-cfg.high_thresh   = 0.5f;   // ByteTrack high gate
-cfg.low_thresh    = 0.1f;   // recovery gate
-cfg.match_thresh  = 0.3f;   // min IoU
-cfg.max_age       = 30;     // frames to keep a lost track
-cfg.min_hits      = 3;      // hits before confirmed
-tracker_ = std::make_unique<Tracker>(cfg);
+## Architecture (this binary)
+
+| Component | Path | Role |
+|-----------|------|------|
+| `ConsumerPipeline` | `src/cv/` | detect → track → emit `ObjectEvent` |
+| `Detector` | `src/cv/` | thin wrapper over `rfdetr::RFDETRModel` |
+| `Tracker` | `src/cv/` | Kalman constant-velocity + ByteTrack two-stage association (OpenCV only, no ReID) |
+| Capture (vendored) | `src/capture/` | in-process `FrameQueue` for `--in-process` |
+| CLI | `src/classifier/main.cpp` | `--source` / `--in-process` / `--network-path` → ingest |
+
+### Tracker notes
+
+- High-confidence detections (`≥ high_thresh`) spawn tracks; low-confidence boxes only recover lost tracks.
+- Class-aware matching (never associates across classes).
+- Public API: `update(vector<Detection>, frame)` returns dets with `track_id` set. **Callers must use the return value** (by-value API).
+
+---
+
+## Stable contract
+
+Output: `detection.v1.ObjectEnvelope` via `IngestService.IngestObject`.
+
+Relevant fields: `frame_id`, `timestamp`, `source`, `class_name` / `class_id`, `confidence`, `track_id`, `box` (xyxy), optional `crop_jpeg`, frame size, capture latency.
+
+Downstream subjects (via core NATS publisher): `cv.object.<class>`.
+
+---
+
+## Repository layout
+
+```text
+object-classifier/
+├── CMakeLists.txt
+├── README.md
+├── docker/
+│   └── Dockerfile
+├── docker-compose.yml
+├── scripts/
+│   └── download_models.sh    # RF-DETR ONNX weights
+├── models/                   # gitignored *.onnx; use download script
+├── proto/                    # vendored capture / detection / ingest protos
+└── src/
+    ├── classifier/main.cpp
+    ├── capture/              # in-process FrameQueue + Capture
+    ├── common/
+    └── cv/                   # detector, tracker, postprocess, pipeline
 ```
 
-## Behaviour notes for AgentJetson
+---
 
-- Only **high-confidence** detections (`≥ high_thresh`) can spawn new tracks. Low-confidence boxes are used solely to re-acquire lost tracks – this dramatically reduces ID switches under occlusion.
-- Predicted boxes are used for matching, so a track that is temporarily missed still “owns” its spatial region and is more likely to be re-associated correctly.
-- `Detection::track_id` is set for every matched detection (including newly created tracks). Downstream consumers that filter on `track_id > 0` continue to work.
+## Design principles (local)
 
-## Files
+1. **Capture is not classification** — camera-connector owns sources; this binary owns detection + tracking.
+2. **ObjectEnvelope is the stable detection contract** — do not break field semantics for specialists.
+3. **One detection engine** — primary detect uses agentjetson/rf-detr; swap weights, not frameworks.
+4. **Edge-first** — heavy inference stays near the camera; core is correlation + durable bus.
 
-```
-object-classifier-tracker/
-├── include/tracker.hpp   # public header (same namespace edge_cv)
-├── src/tracker.cpp       # implementation
-└── README.md             # this file
-```
+---
+
+*Keep this README in sync with the System Overview when the architecture evolves.*

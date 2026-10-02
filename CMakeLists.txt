@@ -11,13 +11,12 @@ find_package(Threads REQUIRED)
 find_package(PkgConfig REQUIRED)
 
 # ---------------------------------------------------------------------------
-# OpenCV — version-aware components (4.x vs 5.x)
+# OpenCV — 4.x or 5.x (System Overview: OpenCV 4.x / 5.x)
 # Custom tracker only needs: core, imgproc, imgcodecs, videoio, video
 # ---------------------------------------------------------------------------
-find_package(OpenCV 5 REQUIRED)
-find_package(OpenCV 5 REQUIRED COMPONENTS core imgproc imgcodecs videoio video)
-if(OpenCV_VERSION VERSION_LESS "5.0")
-  message(FATAL_ERROR "OpenCV ≥ 5.0 required (found ${OpenCV_VERSION})")
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio video)
+if(OpenCV_VERSION VERSION_LESS "4.5")
+  message(FATAL_ERROR "OpenCV ≥ 4.5 required (found ${OpenCV_VERSION})")
 endif()
 message(STATUS "OpenCV ${OpenCV_VERSION} at ${OpenCV_DIR}")
 

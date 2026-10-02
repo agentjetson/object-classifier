@@ -38,4 +38,10 @@ ENV LD_LIBRARY_PATH=/opt/opencv/lib:/opt/onnxruntime/lib \
     DET_CONF=0.35
 
 WORKDIR /app
-CMD ["/app/object_classifier", "--in-process", "/app/sample.mp4", "/app/models/rf-detr-nano.onnx"]
+
+# Models + optional sample video must be mounted at runtime, e.g.:
+#   -v $(pwd)/models:/app/models:ro
+#   -v $(pwd)/data/sample.mp4:/app/data/sample.mp4:ro
+#
+# Default CMD = recommended single-box path (in-process capture).
+CMD ["/app/object_classifier", "--in-process", "/app/data/sample.mp4", "/app/models/rf-detr-nano.onnx"]

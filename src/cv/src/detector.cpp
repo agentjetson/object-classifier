@@ -2,10 +2,10 @@
 
 #include "rfdetr_model.hpp"  // agentjetson/rf-detr
 
-#include <fstream>
-#include <iostream>
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <fstream>
 
 namespace edge_cv {
 
@@ -54,9 +54,8 @@ Detector::Detector(const Config& cfg) : cfg_(cfg), impl_(std::make_unique<Impl>(
   const std::string device = cfg_.device.empty() ? "gpu" : cfg_.device;
   impl_->model = std::make_unique<rfdetr::RFDETRModel>(cfg_.model_path, device);
   impl_->model->warmup();
-  std::cout << "[Detector] RF-DETR loaded: " << cfg_.model_path
-            << "  device=" << device
-            << "  classes=" << class_names_.size() << "\n";
+  fprintf(stderr, "[Detector] RF-DETR loaded: %s  device=%s  classes=%zu\n",
+          cfg_.model_path.c_str(), device.c_str(), class_names_.size());
 }
 
 Detector::~Detector() = default;

@@ -1,10 +1,14 @@
 # Local edge stack for object-classifier.
 # Talks to agentjetson/core ingest (gRPC :50052) when that stack is up.
 #
+# Prerequisites:
+#   ./scripts/download_models.sh          # → models/rf-detr-nano.onnx
+#   # optional sample video under data/sample.mp4
+#
 # Usage:
 #   docker compose up --build
-#   # or against host models:
-#   MODEL_PATH=./models/rfdetr.onnx SOURCE=./data/sample.mp4 docker compose up
+#   # custom source / model:
+#   SOURCE=/app/data/sample.mp4 MODEL=/app/models/rf-detr-nano.onnx docker compose up
 
 services:
   object-classifier:
@@ -13,16 +17,20 @@ services:
       dockerfile: docker/Dockerfile
     environment:
       INGEST_ADDR: ${INGEST_ADDR:-host.docker.internal:50052}
+      ORT_DEVICE: ${ORT_DEVICE:-cpu}
+      EDGE_FORCE_CPU: ${EDGE_FORCE_CPU:-1}
+      DET_CONF: ${DET_CONF:-0.35}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_ENDPOINT:-}
       OTEL_EXPORTER_OTLP_INSECURE: "true"
     volumes:
-      - ${MODEL_DIR:-./models}:/models:ro
-      - ${DATA_DIR:-./data}:/data:ro
-    # Example: in-process capture + classify
+      - ${MODEL_DIR:-./models}:/app/models:ro
+      - ${DATA_DIR:-./data}:/app/data:ro
+    # Must include the binary: compose `command` replaces Dockerfile CMD entirely.
     command:
+      - "/app/object_classifier"
       - "--in-process"
-      - "${SOURCE:-/data/sample.mp4}"
-      - "${MODEL:-/models/model.onnx}"
+      - "${SOURCE:-/app/data/sample.mp4}"
+      - "${MODEL:-/app/models/rf-detr-nano.onnx}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
