@@ -237,15 +237,13 @@ std::vector<Detection> Tracker::update(std::vector<Detection> dets, const cv::Ma
     }
 
     // ------------------------------------------------------------------
-    // 3. Second association: low-score detections ↔ remaining *lost* tracks
-    //    (recovery of briefly occluded objects – classic ByteTrack)
+    // 3. Second association: low-score detections ↔ remaining unmatched tracks
     // ------------------------------------------------------------------
     {
         std::vector<size_t> remaining_tracks;
         for (size_t ti = 0; ti < tracks_.size(); ++ti) {
-            if (track_matched[ti]) continue;
-            // Prefer recovering tracks that were recently seen
-            if (tracks_[ti].time_since_update <= 1) continue; // already tried
+            if (track_matched[ti]) continue;                     // already associated in high-score stage
+            if (tracks_[ti].time_since_update > cfg_.max_age) continue; // already dead
             remaining_tracks.push_back(ti);
         }
 
