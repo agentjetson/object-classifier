@@ -160,11 +160,11 @@ if(NOT NATS_FOUND)
 endif()
 
 # ---------------------------------------------------------------------------
-# Canonical protos from agentjetson/contract (no private proto/ copy)
+# Canonical protos from agentjetson/core (no private proto/ copy)
 # ---------------------------------------------------------------------------
-set(AGENTJETSON_CONTRACT_GIT_TAG main CACHE STRING "agentjetson/contract ref for protos")
+set(AGENTJETSON_CONTRACT_GIT_TAG main CACHE STRING "agentjetson/core ref for protos")
 FetchContent_Declare(agentjetson_contract
-  GIT_REPOSITORY https://github.com/agentjetson/contract.git
+  GIT_REPOSITORY https://github.com/agentjetson/core.git
   GIT_TAG ${AGENTJETSON_CONTRACT_GIT_TAG}
   GIT_SHALLOW TRUE)
 FetchContent_GetProperties(agentjetson_contract)
@@ -284,4 +284,4 @@ message(STATUS "object-classifier configured")
 message(STATUS "  OpenCV:    ${OpenCV_VERSION}")
 message(STATUS "  RF-DETR:   ${RFDETR_TARGET}")
 message(STATUS "  Tracker:   in-tree (Kalman + ByteTrack-lite)")
-message(STATUS "  Protos:    agentjetson/contract (${AGENTJETSON_CONTRACT_GIT_TAG})")
+message(STATUS "  Protos:    agentjetson/core (${AGENTJETSON_CONTRACT_GIT_TAG})")

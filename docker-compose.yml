@@ -1,5 +1,5 @@
 # Local edge stack for object-classifier.
-# Talks to agentjetson/core ingest (gRPC :50052) when that stack is up.
+# Talks to agentjetson/core ingest (gRPC :50052) when core stack is up.
 #
 # Prerequisites:
 #   ./scripts/download_models.sh          # → models/rf-detr-nano.onnx

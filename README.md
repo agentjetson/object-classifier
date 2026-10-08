@@ -4,7 +4,7 @@
 
 Edge CV consumer that runs [agentjetson/rf-detr](https://github.com/agentjetson/rf-detr) (RF-DETR via ONNX Runtime — TensorRT → CUDA → CPU), tracks objects with a Kalman + ByteTrack-lite tracker, and publishes stable `detection.v1.ObjectEnvelope` messages to [agentjetson/core](https://github.com/agentjetson/core) ingest (`IngestObject` / `cv.object.*`).
 
-This README is the local trail marker. The architecture map lives in the [System Overview & Run Guide](https://github.com/agentjetson) (bring-up order §6).
+This README is the local trail marker. The architecture map lives in the README of https://github.com/agentjetson/core (bring-up order §6).
 
 ---
 
